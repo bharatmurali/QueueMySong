@@ -1,1 +1,5 @@
 impt.txt
+venv
+*.pyc
+tmp/
+env/
