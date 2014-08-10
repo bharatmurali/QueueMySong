@@ -4,6 +4,11 @@ import threading
 from flask import Flask, request, redirect, session
 from twilio import twiml
 import json
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('spotify')
+logger.setLevel(logging.INFO)
 
 # Set up Twilio client
 account_sid = "AC472e07ebef658f3280db5ce90ee5fb76"
@@ -16,15 +21,15 @@ app.debug = True
 
 logged_in_event = threading.Event()
 
-session = spotify.Session()
-event_loop = spotify.EventLoop(session)
+spotify_session = spotify.Session()
+event_loop = spotify.EventLoop(spotify_session)
 event_loop.start()
 
 def connection_state_listener(session):
 	if session.connection.state is spotify.ConnectionState.LOGGED_IN:
 		logged_in_event.set()
 
-session.on(
+spotify_session.on(
 	spotify.SessionEvent.CONNECTION_STATE_UPDATED,
 	connection_state_listener)
 
@@ -35,23 +40,26 @@ spotifyName = secureFile.readline()
 spotifyPwd = secureFile.readline()
 secureFile.close()
 
-session.login(spotifyName, spotifyPwd)
+spotify_session.login(spotifyName, spotifyPwd)
 
 
 while not logged_in_event.wait(0.1):
-	session.process_events()
+	spotify_session.process_events()
 
 print("User is now logged in")
 
-container = session.playlist_container
+container = spotify_session.playlist_container
 container.load()
 
-playlist = session.playlist_container.add_new_playlist('Bharat House Party')
+playlist = spotify_session.playlist_container.add_new_playlist('Bharat House Party')
+playlist.load()
 
 time.sleep(2)
 
 #set up number -> stage hashmap
 stageRecords = {}
+songRecords = {}
+NUM_SONGS = 3
 
 @app.route("/call")
 def call():
@@ -69,16 +77,12 @@ def sms():
 	current_stage = stageRecords.get(user_number, 0)
 	response = twiml.Response()
 
-	if (current_stage == 1):
-		tracks = search(message)
+	if (current_stage == 2):
+		response.message(str(handleSongChoice(int(message) - 1, user_number)))
+		return str(response)
 
-		if not tracks:
-			response.message("Sorry we could not find any songs that matched that your query. Please try again")
-			return str(response)
-
-		stageRecords[user_number] = 0
-		optionsText = "We found some songs that match your request. Which one would you like to add? Respond with the number: \n" + tracksToString(tracks)
-		response.message(optionsText)
+	elif (current_stage == 1):
+		response.message(str(handleSongInput(message, user_number)))
 		return str(response)
 
 	elif (current_stage == 0 and message == "Q"):
@@ -90,6 +94,37 @@ def sms():
 		response.message("Please text Q to get started")
 		return str(response)
 
+def handleSongChoice (song_index, user_number):
+	global songRecords
+	global stageRecords
+	global logger
+	global playlist
+
+	if song_index is None or song_index < 0 or song_index >= NUM_SONGS:
+		return "Sorry that is an invalid option. Please choose a number between 1 and " + str(NUM_SONGS)
+
+	tracks = songRecords.get(user_number)
+	chosen_track = tracks[song_index]
+	playlist.add_tracks(chosen_track)
+	stageRecords[user_number] = 0
+	return "Thanks, your song has been queued successfully!"
+
+
+def handleSongInput (song_name, user_number):
+		global stageRecords
+		global songRecords
+
+		songRecords[user_number] = None
+
+		tracks = search(song_name)
+
+		if not tracks:
+			return "Sorry we could not find any songs that matched that your query. Please try again"
+
+		stageRecords[user_number] = 2
+		songRecords[user_number] = tracks
+		return "We found some songs that match your request. Which one would you like to add? Respond with the number: \n" + tracksToString(tracks)
+
 def tracksToString(tracks):
 	stringToReturn = ""
 	counter = 1
@@ -99,14 +134,11 @@ def tracksToString(tracks):
 
 	return stringToReturn
 
-
 def search(song_name):
-	global session
-	global spotify
+	global spotify_session
 
-	search_results = session.search(query=song_name, track_count=3).load()
+	search_results = spotify_session.search(query=song_name, track_count=NUM_SONGS).load()
 	return search_results.tracks
-
 
 app.secret_key = 'A0Zr98j/3yXR~XHHfef!!abcd'
 
