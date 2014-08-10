@@ -70,9 +70,15 @@ def sms():
 	response = twiml.Response()
 
 	if (current_stage == 1):
-		stageRecords[user_number] = 0
 		tracks = search(message)
-		response.message(str(tracks))
+
+		if not tracks:
+			response.message("Sorry we could not find any songs that matched that your query. Please try again")
+			return str(response)
+
+		stageRecords[user_number] = 0
+		optionsText = "We found some songs that match your request. Which one would you like to add? Respond with the number: \n" + tracksToString(tracks)
+		response.message(optionsText)
 		return str(response)
 
 	elif (current_stage == 0 and message == "Q"):
@@ -84,12 +90,22 @@ def sms():
 		response.message("Please text Q to get started")
 		return str(response)
 
+def tracksToString(tracks):
+	stringToReturn = ""
+	counter = 1
+	for track in tracks:
+		stringToReturn += str(counter) + '. ' + str (track.artists[0].name) + ' - ' + str(track.name) + "\n"
+		counter+=1
+
+	return stringToReturn
+
+
 def search(song_name):
 	global session
 	global spotify
 
-	tracks = session.search(query=song_name, track_count=3).load()
-	return tracks
+	search_results = session.search(query=song_name, track_count=3).load()
+	return search_results.tracks
 
 
 app.secret_key = 'A0Zr98j/3yXR~XHHfef!!abcd'
