@@ -22,6 +22,7 @@ app.debug = True
 logged_in_event = threading.Event()
 
 spotify_session = spotify.Session()
+spotify_session.flush_caches()
 event_loop = spotify.EventLoop(spotify_session)
 event_loop.start()
 
@@ -51,8 +52,27 @@ print("User is now logged in")
 container = spotify_session.playlist_container
 container.load()
 
-playlist = spotify_session.playlist_container.add_new_playlist('Bharat House Party')
-playlist.load()
+playlist_name = u"Party App"
+existing_playlists = spotify_session.playlist_container
+playlist = None
+found = False
+
+for current_playlist in existing_playlists:
+	try:
+		current_playlist.load()
+	except:
+		continue
+
+	if (name == playlist_name):
+		logger.info("Playlist found.")
+		playlist = current_playlist
+		found = True
+		break
+
+if not found:
+	logger.info("Playlist not found. Creating new playlist in Spotify.")
+	playlist = spotify_session.playlist_container.add_new_playlist(playlist_name)
+	playlist.load()
 
 time.sleep(2)
 
