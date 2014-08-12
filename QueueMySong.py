@@ -22,7 +22,6 @@ app.debug = True
 logged_in_event = threading.Event()
 
 spotify_session = spotify.Session()
-spotify_session.flush_caches()
 event_loop = spotify.EventLoop(spotify_session)
 event_loop.start()
 
@@ -63,7 +62,7 @@ for current_playlist in existing_playlists:
 	except:
 		continue
 
-	if (name == playlist_name):
+	if (current_playlist.name == playlist_name):
 		logger.info("Playlist found.")
 		playlist = current_playlist
 		found = True
@@ -79,7 +78,7 @@ time.sleep(2)
 #set up number -> stage hashmap
 stageRecords = {}
 songRecords = {}
-NUM_SONGS = 3
+MAX_SONGS = 3
 
 @app.route("/call")
 def call():
@@ -97,21 +96,12 @@ def sms():
 	current_stage = stageRecords.get(user_number, 0)
 	response = twiml.Response()
 
-	if (current_stage == 2):
-		response.message(str(handleSongChoice(int(message) - 1, user_number)))
-		return str(response)
-
-	elif (current_stage == 1):
-		response.message(str(handleSongInput(message, user_number)))
-		return str(response)
-
-	elif (current_stage == 0 and message == "Q"):
-		stageRecords[user_number] = 1
-		response.message("Thanks for using Queue My Song! What song would you like to queue today?")
+	if (current_stage == 1):
+		response.message(str(handleSongChoice(message , user_number)))
 		return str(response)
 
 	else:
-		response.message("Please text Q to get started")
+		response.message(str(handleSongInput(message, user_number)))
 		return str(response)
 
 def handleSongChoice (song_index, user_number):
@@ -120,11 +110,16 @@ def handleSongChoice (song_index, user_number):
 	global logger
 	global playlist
 
-	if song_index is None or song_index < 0 or song_index >= NUM_SONGS:
-		return "Sorry that is an invalid option. Please choose a number between 1 and " + str(NUM_SONGS)
-
 	tracks = songRecords.get(user_number)
-	chosen_track = tracks[song_index]
+	NUM_SONGS = len(tracks)
+
+	if song_index is None or not song_index.isdigit() or int(song_index) < 1 or int(song_index) > NUM_SONGS + 1:
+		return "Sorry that is an invalid option. Please choose a number between 1 and " + str(NUM_SONGS + 1)
+	elif int(song_index)== NUM_SONGS + 1:
+		stageRecords[user_number] = 0
+		return "Sorry we couldn't find a good song match on Spotify! Feel free to search again."
+
+	chosen_track = tracks[int(song_index) - 1]
 	playlist.add_tracks(chosen_track)
 	stageRecords[user_number] = 0
 	return "Thanks, your song has been queued successfully!"
@@ -141,23 +136,25 @@ def handleSongInput (song_name, user_number):
 		if not tracks:
 			return "Sorry we could not find any songs that matched that your query. Please try again"
 
-		stageRecords[user_number] = 2
+		stageRecords[user_number] = 1
 		songRecords[user_number] = tracks
-		return "We found some songs that match your request. Which one would you like to add? Respond with the number: \n" + tracksToString(tracks)
+		return "We found some songs that match your request. Which one would you like to add? Respond with the number: \n" + \
+			tracksToString(tracks)
 
 def tracksToString(tracks):
 	stringToReturn = ""
 	counter = 1
 	for track in tracks:
-		stringToReturn += str(counter) + '. ' + str (track.artists[0].name) + ' - ' + str(track.name) + "\n"
+		stringToReturn += str(counter) + '. ' + str (track.artists[0].name) + ' - ' + str(track.name) + "\n" 
 		counter+=1
 
+	stringToReturn += str(counter) + ". None of the above. Retry search."
 	return stringToReturn
 
 def search(song_name):
 	global spotify_session
 
-	search_results = spotify_session.search(query=song_name, track_count=NUM_SONGS).load()
+	search_results = spotify_session.search(query=song_name, track_count=MAX_SONGS).load()
 	return search_results.tracks
 
 app.secret_key = 'A0Zr98j/3yXR~XHHfef!!abcd'
